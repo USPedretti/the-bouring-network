@@ -96,7 +96,8 @@ export const registerUser = async (username, password, name, bio = '') => {
     .maybeSingle();
 
   if (checkError) {
-    return { success: false, error: 'Erro ao verificar nome de usuário.' };
+    console.error('Erro detalhado ao verificar usuário no Supabase:', checkError);
+    return { success: false, error: `Erro ao verificar nome de usuário: ${checkError.message}` };
   }
   if (existingUser) {
     return { success: false, error: 'Este nome de usuário incrivelmente genérico já existe.' };
@@ -116,7 +117,8 @@ export const registerUser = async (username, password, name, bio = '') => {
     .insert([newUser]);
 
   if (insertError) {
-    return { success: false, error: 'Erro ao cadastrar usuário no Supabase.' };
+    console.error('Erro detalhado ao cadastrar usuário no Supabase:', insertError);
+    return { success: false, error: `Erro ao cadastrar usuário no Supabase: ${insertError.message}` };
   }
   
   return { success: true, user: mapUserToUI(newUser) };
@@ -130,7 +132,11 @@ export const loginUser = async (username, password) => {
     .ilike('username', username.trim())
     .maybeSingle();
   
-  if (error || !user) {
+  if (error) {
+    console.error('Erro detalhado de login no Supabase:', error);
+    return { success: false, error: `Erro ao conectar com o Supabase: ${error.message}` };
+  }
+  if (!user) {
     return { success: false, error: 'Usuário não cadastrado nesta base entediante.' };
   }
   
