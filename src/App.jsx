@@ -5,7 +5,8 @@ import Feed from './components/Feed';
 import Chat from './components/Chat';
 import Notifications from './components/Notifications';
 import Profile from './components/Profile';
-import { getStorageData, subscribeToSync, triggerLocalSync, saveStorageData } from './db/mockStore';
+import { fetchPosts, fetchNotifications, subscribeToSync } from './db/mockStore';
+import { supabase } from './db/supabaseClient';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => {
@@ -28,13 +29,19 @@ export default function App() {
     return 'light';
   });
 
-  // Carrega dados iniciais
+  // Carrega dados iniciais do Supabase
   useEffect(() => {
-    const data = getStorageData();
-    setPosts(data.posts);
-    setChats(data.chats);
-    setNotifications(data.notifications);
-  }, []);
+    async function loadInitialData() {
+      const postsData = await fetchPosts();
+      setPosts(postsData);
+      
+      if (currentUser) {
+        const notifsData = await fetchNotifications(currentUser.username);
+        setNotifications(notifsData);
+      }
+    }
+    loadInitialData();
+  }, [currentUser]);
 
   // Sincroniza Tema com o elemento HTML
   useEffect(() => {
@@ -42,18 +49,38 @@ export default function App() {
     localStorage.setItem('bn_theme', theme);
   }, [theme]);
 
-  // Sincronização em tempo real entre abas usando a BroadcastChannel API
+  // Sincronização em tempo real via Supabase Realtime
   useEffect(() => {
-    const handleSync = (payload) => {
-      const data = getStorageData();
-      
-      // Atualiza o estado adequado conforme a chave modificada
-      if (payload.key === 'bn_posts') setPosts(data.posts);
-      if (payload.key === 'bn_chats') setChats(data.chats);
-      if (payload.key === 'bn_notifications') setNotifications(data.notifications);
+    const handleSync = async (payload) => {
+      if (payload.key === 'bn_posts') {
+        if (payload.data) {
+          setPosts(payload.data);
+        } else {
+          const postsData = await fetchPosts();
+          setPosts(postsData);
+        }
+      }
+      if (payload.key === 'bn_chats') {
+        setChats(prev => [...prev, {}]); // Dispara recarregamento no componente de Chat
+      }
+      if (payload.key === 'bn_notifications' && currentUser) {
+        const notifsData = await fetchNotifications(currentUser.username);
+        setNotifications(notifsData);
+      }
       if (payload.key === 'bn_users' && currentUser) {
-        const freshUser = data.users.find(u => u.username === currentUser.username);
-        if (freshUser) {
+        const { data: dbUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('username', currentUser.username)
+          .maybeSingle();
+        if (dbUser) {
+          const freshUser = {
+            username: dbUser.username,
+            name: dbUser.name,
+            bio: dbUser.bio,
+            boredomLevel: dbUser.boredom_level,
+            avatarColor: dbUser.avatar_color
+          };
           setCurrentUser(freshUser);
           localStorage.setItem('bn_current_user', JSON.stringify(freshUser));
         }
@@ -64,12 +91,12 @@ export default function App() {
     return () => unsubscribe();
   }, [currentUser]);
 
-  // Captura eventos de Toast para alertas irritantes/sarcásticos em tempo real
+  // Captura eventos de Toast em tempo real
   useEffect(() => {
     const handleNewToast = (e) => {
       const newNotif = e.detail;
       
-      // Apenas mostra toast se for para o usuário logado e não for sobre chat (chat já tem sua própria interface de feedback)
+      // Apenas mostra toast se for para o usuário logado e não for sobre chat
       if (currentUser && newNotif.username === currentUser.username && newNotif.type !== 'chat') {
         const toastId = `toast-${Date.now()}`;
         const newToast = {
@@ -91,15 +118,15 @@ export default function App() {
     return () => window.removeEventListener('bn_toast_alert', handleNewToast);
   }, [currentUser]);
 
-  const handleLoginSuccess = (user) => {
+  const handleLoginSuccess = async (user) => {
     setCurrentUser(user);
     localStorage.setItem('bn_current_user', JSON.stringify(user));
     
     // Atualiza estados locais ao fazer login
-    const data = getStorageData();
-    setPosts(data.posts);
-    setChats(data.chats);
-    setNotifications(data.notifications);
+    const postsData = await fetchPosts();
+    setPosts(postsData);
+    const notifsData = await fetchNotifications(user.username);
+    setNotifications(notifsData);
   };
 
   const handleLogout = () => {
@@ -111,7 +138,6 @@ export default function App() {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
   };
 
-  // Se não estiver logado, exibe tela de login brutalista
   if (!currentUser) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -134,10 +160,7 @@ export default function App() {
         {activeTab === 'feed' && (
           <Feed
             posts={posts}
-            setPosts={(newPosts) => {
-              setPosts(newPosts);
-              triggerLocalSync('POSTS_UPDATE', 'bn_posts', newPosts);
-            }}
+            setPosts={setPosts}
             currentUser={currentUser}
           />
         )}
@@ -152,10 +175,7 @@ export default function App() {
         {activeTab === 'notifications' && (
           <Notifications
             notifications={notifications}
-            setNotifications={(newNotifs) => {
-              setNotifications(newNotifs);
-              triggerLocalSync('NOTIFICATIONS_UPDATE', 'bn_notifications', newNotifs);
-            }}
+            setNotifications={setNotifications}
             currentUser={currentUser}
           />
         )}
@@ -163,16 +183,12 @@ export default function App() {
         {activeTab === 'profile' && (
           <Profile
             currentUser={currentUser}
-            setCurrentUser={(updatedUser) => {
-              setCurrentUser(updatedUser);
-              localStorage.setItem('bn_current_user', JSON.stringify(updatedUser));
-              triggerLocalSync('USERS_UPDATE', 'bn_users', updatedUser);
-            }}
+            setCurrentUser={setCurrentUser}
           />
         )}
       </main>
 
-      {/* Toasts Container para Popups Irritantes / Notificações de Tédio em tempo real */}
+      {/* Toasts Container */}
       <div className="toasts-container">
         {toasts.map((toast) => (
           <div key={toast.id} className="toast-item">

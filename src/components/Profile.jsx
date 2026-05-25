@@ -17,11 +17,11 @@ export default function Profile({ currentUser, setCurrentUser }) {
   const [avatarColor, setAvatarColor] = useState(currentUser.avatarColor || '#e8e6df');
   const [message, setMessage] = useState('');
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     setMessage('');
 
-    const updated = updateUserProfile(currentUser.username, {
+    const updated = await updateUserProfile(currentUser.username, {
       name,
       bio,
       boredomLevel: parseInt(boredomLevel),

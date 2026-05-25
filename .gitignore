@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # Secrets
-secrets.tst
+secrets.txt
 .env
 .env.local
 .env.development.local

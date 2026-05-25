@@ -10,7 +10,7 @@ export default function Login({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
     setMessage('');
@@ -20,7 +20,7 @@ export default function Login({ onLoginSuccess }) {
       return;
     }
 
-    const res = loginUser(username, password);
+    const res = await loginUser(username, password);
     if (res.success) {
       onLoginSuccess(res.user);
     } else {
@@ -28,7 +28,7 @@ export default function Login({ onLoginSuccess }) {
     }
   };
 
-  const handleRegister = (e) => {
+  const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
     setMessage('');
@@ -38,7 +38,7 @@ export default function Login({ onLoginSuccess }) {
       return;
     }
 
-    const res = registerUser(username, password, name, bio);
+    const res = await registerUser(username, password, name, bio);
     if (res.success) {
       setMessage('Registro efetuado com sucesso. Agora faça login se tiver disposição.');
       setIsRegistering(false);

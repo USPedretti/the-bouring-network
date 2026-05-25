@@ -1,24 +1,23 @@
 import React from 'react';
 import { Bell, Trash2, CheckSquare } from 'lucide-react';
-import { saveStorageData } from '../db/mockStore';
+import { markAllNotificationsRead, clearAllNotifications, markNotificationRead, fetchNotifications } from '../db/mockStore';
 
 export default function Notifications({ notifications, setNotifications, currentUser }) {
-  const handleMarkAllRead = () => {
-    const updated = notifications.map(n => ({ ...n, read: true }));
+  const handleMarkAllRead = async () => {
+    await markAllNotificationsRead(currentUser.username);
+    const updated = await fetchNotifications(currentUser.username);
     setNotifications(updated);
-    saveStorageData('bn_notifications', updated, 'NOTIFICATIONS_UPDATE');
   };
 
-  const handleClearAll = () => {
-    // Mantém apenas notificações de outros usuários se houver, ou esvazia
+  const handleClearAll = async () => {
+    await clearAllNotifications(currentUser.username);
     setNotifications([]);
-    saveStorageData('bn_notifications', [], 'NOTIFICATIONS_UPDATE');
   };
 
-  const handleMarkOneRead = (id) => {
-    const updated = notifications.map(n => n.id === id ? { ...n, read: true } : n);
+  const handleMarkOneRead = async (id) => {
+    await markNotificationRead(id);
+    const updated = await fetchNotifications(currentUser.username);
     setNotifications(updated);
-    saveStorageData('bn_notifications', updated, 'NOTIFICATIONS_UPDATE');
   };
 
   const formatNotificationTime = (isoString) => {

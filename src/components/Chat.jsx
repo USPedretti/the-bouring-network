@@ -11,13 +11,21 @@ export default function Chat({ currentUser, chats }) {
 
   // Carrega contatos ao montar o componente ou quando a lista global de chats é atualizada
   useEffect(() => {
-    setContacts(getChatContacts(currentUser.username));
+    async function loadContacts() {
+      const data = await getChatContacts(currentUser.username);
+      setContacts(data);
+    }
+    loadContacts();
   }, [currentUser, chats]);
 
   // Carrega mensagens do contato selecionado
   useEffect(() => {
     if (selectedContact) {
-      setMessages(getChatHistory(currentUser.username, selectedContact.username));
+      async function loadHistory() {
+        const data = await getChatHistory(currentUser.username, selectedContact.username);
+        setMessages(data);
+      }
+      loadHistory();
     }
   }, [selectedContact, currentUser, chats]);
 
@@ -26,18 +34,16 @@ export default function Chat({ currentUser, chats }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSendMessage = (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!messageText.trim() || !selectedContact) return;
 
-    sendDirectMessage(currentUser.username, selectedContact.username, messageText);
+    await sendDirectMessage(currentUser.username, selectedContact.username, messageText);
     setMessageText('');
 
-    // Atualiza histórico local imediatamente para um feeling responsivo
-    // (O resto é sincronizado via mockStore no LocalStorage + broadcast)
-    setTimeout(() => {
-      setMessages(getChatHistory(currentUser.username, selectedContact.username));
-    }, 50);
+    // Atualiza histórico local imediatamente
+    const data = await getChatHistory(currentUser.username, selectedContact.username);
+    setMessages(data);
   };
 
   const formatMessageTime = (isoString) => {

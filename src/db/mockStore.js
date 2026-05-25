@@ -1,81 +1,7 @@
-// Database Simulada com LocalStorage e Sincronização entre Abas
+// Integração com Banco de Dados Supabase (Substituindo o LocalStorage)
+import { supabase } from './supabaseClient';
 
-const CHANNEL_NAME = 'bouring_network_sync';
-let syncChannel = null;
-
-if (typeof window !== 'undefined') {
-  syncChannel = new BroadcastChannel(CHANNEL_NAME);
-}
-
-// Usuários iniciais (Bots)
-const DEFAULT_USERS = [
-  {
-    username: 'Aderbal_Soneca',
-    name: 'Aderbal Soneca',
-    bio: 'Dormir é melhor do que rolar feed. Não me mande mensagem.',
-    boredomLevel: 10,
-    avatarColor: '#5c5a56'
-  },
-  {
-    username: 'Clara_Tediante',
-    name: 'Clara Tediante',
-    bio: 'Colecionadora de tampinhas cinzas. Nada me interessa.',
-    boredomLevel: 9,
-    avatarColor: '#82807b'
-  },
-  {
-    username: 'Robo_Entediado',
-    name: 'Robô Entediado',
-    bio: '01000111 01110010 01100001 01111001. Processando o tédio existencial.',
-    boredomLevel: 10,
-    avatarColor: '#3c3b38'
-  }
-];
-
-// Posts iniciais
-const DEFAULT_POSTS = [
-  {
-    id: 'post-1',
-    username: 'Aderbal_Soneca',
-    content: 'Acabei de olhar para a parede por 45 minutos. Ela continua cinza. Nada de novo por aqui.',
-    imageUrl: '',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(), // 3h atrás
-    likes: ['Clara_Tediante'], // Quem deu "Ok"
-    comments: [
-      {
-        id: 'c-1',
-        username: 'Clara_Tediante',
-        content: 'Belo uso do tempo livre. Parabéns pelo marasmo.',
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString()
-      }
-    ]
-  },
-  {
-    id: 'post-2',
-    username: 'Clara_Tediante',
-    content: 'Comi arroz puro e frio no almoço. Estava completamente sem sal. Perfeito, nenhuma emoção.',
-    imageUrl: 'https://images.unsplash.com/photo-1536304997881-a372c179924b?auto=format&fit=crop&w=600&q=80',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 8).toISOString(), // 8h atrás
-    likes: [],
-    comments: []
-  },
-  {
-    id: 'post-3',
-    username: 'Robo_Entediado',
-    content: 'Minha CPU está rodando a 1.2GHz apenas para renderizar esta interface monocromática. Que desperdício de eletricidade.',
-    imageUrl: '',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(), // 1 dia atrás
-    likes: ['Aderbal_Soneca', 'Clara_Tediante'],
-    comments: [
-      {
-        id: 'c-2',
-        username: 'Aderbal_Soneca',
-        content: 'Desliga isso e vai dormir, robô.',
-        createdAt: new Date(Date.now() - 1000 * 60 * 60 * 20).toISOString()
-      }
-    ]
-  }
-];
+const BOTS = ['Aderbal_Soneca', 'Clara_Tediante', 'Robo_Entediado'];
 
 // Frases automáticas e sem graça dos bots para responder no chat
 const BOT_RESPONSES = {
@@ -102,194 +28,340 @@ const BOT_RESPONSES = {
   ]
 };
 
-// Notificações iniciais irrelevantes
-const DEFAULT_NOTIFICATIONS = [
-  {
-    id: 'n-1',
-    username: 'Aderbal_Soneca',
-    type: 'boredom',
-    content: 'Aderbal_Soneca bocejou olhando para o seu post.',
-    createdAt: new Date(Date.now() - 1000 * 60 * 15).toISOString(), // 15 min atrás
-    read: false
-  },
-  {
-    id: 'n-2',
-    username: 'Clara_Tediante',
-    type: 'comment',
-    content: 'Clara_Tediante fez um comentário desinteressado no seu post.',
-    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
-    read: true
-  }
-];
+// Mapper de banco de dados (snake_case) para React (camelCase)
+const mapUserToUI = (dbUser) => {
+  if (!dbUser) return null;
+  return {
+    username: dbUser.username,
+    name: dbUser.name,
+    bio: dbUser.bio,
+    boredomLevel: dbUser.boredom_level,
+    avatarColor: dbUser.avatar_color
+  };
+};
 
-// Carrega dados do LocalStorage ou define padrões
+// Funções mock sem efeito mantidas para retrocompatibilidade provisória
 export const getStorageData = () => {
-  if (typeof window === 'undefined') return { users: DEFAULT_USERS, posts: DEFAULT_POSTS, chats: [], notifications: DEFAULT_NOTIFICATIONS };
-  
-  const users = JSON.parse(localStorage.getItem('bn_users')) || DEFAULT_USERS;
-  const posts = JSON.parse(localStorage.getItem('bn_posts')) || DEFAULT_POSTS;
-  const chats = JSON.parse(localStorage.getItem('bn_chats')) || [];
-  const notifications = JSON.parse(localStorage.getItem('bn_notifications')) || DEFAULT_NOTIFICATIONS;
-  
-  return { users, posts, chats, notifications };
+  return { users: [], posts: [], chats: [], notifications: [] };
 };
 
-// Salva dados no LocalStorage e envia sinalizador para as outras abas
-export const saveStorageData = (key, data, broadcastType = null) => {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(key, JSON.stringify(data));
-  
-  if (syncChannel && broadcastType) {
-    syncChannel.postMessage({ type: broadcastType, key, data });
+export const saveStorageData = () => {};
+export const triggerLocalSync = () => {};
+
+// Busca posts da tabela do Supabase (com likes e comments)
+export const fetchPosts = async () => {
+  const { data: dbPosts, error } = await supabase
+    .from('posts')
+    .select(`
+      id,
+      username,
+      content,
+      image_url,
+      created_at,
+      post_likes ( username ),
+      post_comments ( id, username, content, created_at )
+    `)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Erro ao buscar posts:', error);
+    return [];
   }
+
+  return dbPosts.map(post => ({
+    id: post.id,
+    username: post.username,
+    content: post.content,
+    imageUrl: post.image_url || '',
+    createdAt: post.created_at,
+    likes: post.post_likes ? post.post_likes.map(l => l.username) : [],
+    comments: post.post_comments ? post.post_comments.map(c => ({
+      id: c.id,
+      username: c.username,
+      content: c.content,
+      createdAt: c.created_at
+    })).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)) : []
+  }));
 };
 
-// Registra um novo usuário
-export const registerUser = (username, password, name, bio = '') => {
-  const { users } = getStorageData();
-  const lowerUsername = username.trim().toLowerCase();
+// Registra um novo usuário no banco
+export const registerUser = async (username, password, name, bio = '') => {
+  const cleanUsername = username.trim();
+  const lowerUsername = cleanUsername.toLowerCase();
   
-  if (users.some(u => u.username.toLowerCase() === lowerUsername)) {
+  const { data: existingUser, error: checkError } = await supabase
+    .from('users')
+    .select('username')
+    .ilike('username', lowerUsername)
+    .maybeSingle();
+
+  if (checkError) {
+    return { success: false, error: 'Erro ao verificar nome de usuário.' };
+  }
+  if (existingUser) {
     return { success: false, error: 'Este nome de usuário incrivelmente genérico já existe.' };
   }
   
   const newUser = {
-    username: username.trim(),
-    password, // Armazenamento simplificado de demonstração
-    name: name.trim() || username.trim(),
+    username: cleanUsername,
+    password,
+    name: name.trim() || cleanUsername,
     bio: bio.trim() || 'Apenas mais um usuário comum e sem nada especial.',
-    boredomLevel: 5,
-    avatarColor: '#7a7672'
+    boredom_level: 5,
+    avatar_color: '#7a7672'
   };
   
-  users.push(newUser);
-  saveStorageData('bn_users', users, 'USERS_UPDATE');
-  return { success: true, user: newUser };
+  const { error: insertError } = await supabase
+    .from('users')
+    .insert([newUser]);
+
+  if (insertError) {
+    return { success: false, error: 'Erro ao cadastrar usuário no Supabase.' };
+  }
+  
+  return { success: true, user: mapUserToUI(newUser) };
 };
 
 // Faz login
-export const loginUser = (username, password) => {
-  const { users } = getStorageData();
-  const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+export const loginUser = async (username, password) => {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('*')
+    .ilike('username', username.trim())
+    .maybeSingle();
   
-  if (!user) {
+  if (error || !user) {
     return { success: false, error: 'Usuário não cadastrado nesta base entediante.' };
   }
   
-  // Para bots iniciais, permite login com qualquer senha
-  const isBot = DEFAULT_USERS.some(u => u.username === user.username);
+  const isBot = BOTS.includes(user.username);
   if (!isBot && user.password !== password) {
     return { success: false, error: 'Senha incorreta. Tente algo menos complicado.' };
   }
   
-  return { success: true, user };
+  return { success: true, user: mapUserToUI(user) };
 };
 
-// Cria um post
-export const createPost = (username, content, imageUrl = '') => {
-  const { posts } = getStorageData();
-  
+// Cria um post no Supabase
+export const createPost = async (username, content, imageUrl = '') => {
   const newPost = {
-    id: `post-${Date.now()}`,
     username,
     content: content.trim(),
-    imageUrl,
-    createdAt: new Date().toISOString(),
+    image_url: imageUrl || null
+  };
+  
+  const { data: post, error } = await supabase
+    .from('posts')
+    .insert([newPost])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao criar post:', error);
+    return null;
+  }
+  
+  // Gera notificação global aleatória (para irritar/divertir)
+  await triggerRandomSystemNotification(username);
+  
+  return {
+    id: post.id,
+    username: post.username,
+    content: post.content,
+    imageUrl: post.image_url || '',
+    createdAt: post.created_at,
     likes: [],
     comments: []
   };
-  
-  posts.unshift(newPost);
-  saveStorageData('bn_posts', posts, 'POSTS_UPDATE');
-  
-  // Gera notificação global aleatória (para irritar/divertir)
-  triggerRandomSystemNotification(username, 'post');
-  
-  return newPost;
 };
 
 // Curte / Descurte um post
-export const toggleLike = (postId, username) => {
-  const { posts } = getStorageData();
-  const postIndex = posts.findIndex(p => p.id === postId);
-  
-  if (postIndex === -1) return null;
-  
-  const post = posts[postIndex];
-  const likedIndex = post.likes.indexOf(username);
-  
-  if (likedIndex > -1) {
-    post.likes.splice(likedIndex, 1);
+export const toggleLike = async (postId, username) => {
+  const { data: existingLike, error: checkError } = await supabase
+    .from('post_likes')
+    .select('*')
+    .eq('post_id', postId)
+    .eq('username', username)
+    .maybeSingle();
+
+  if (checkError) return null;
+
+  if (existingLike) {
+    await supabase
+      .from('post_likes')
+      .delete()
+      .eq('post_id', postId)
+      .eq('username', username);
   } else {
-    post.likes.push(username);
-    // Notifica o dono do post se for outra pessoa
-    if (post.username !== username) {
-      addNotification(post.username, `${username} marcou seu post com um "Ok". Nada de extraordinário.`, 'like');
+    await supabase
+      .from('post_likes')
+      .insert([{ post_id: postId, username }]);
+    
+    // Notifica o dono do post
+    const { data: post } = await supabase
+      .from('posts')
+      .select('username')
+      .eq('id', postId)
+      .single();
+
+    if (post && post.username !== username) {
+      await addNotification(post.username, `${username} marcou seu post com um "Ok". Nada de extraordinário.`, 'like');
     }
   }
   
-  posts[postIndex] = post;
-  saveStorageData('bn_posts', posts, 'POSTS_UPDATE');
-  return post;
+  const { data: updatedLikes } = await supabase
+    .from('post_likes')
+    .select('username')
+    .eq('post_id', postId);
+
+  return updatedLikes ? updatedLikes.map(l => l.username) : [];
 };
 
 // Comenta em um post
-export const addComment = (postId, username, content) => {
-  const { posts } = getStorageData();
-  const postIndex = posts.findIndex(p => p.id === postId);
-  
-  if (postIndex === -1) return null;
-  
-  const post = posts[postIndex];
+export const addComment = async (postId, username, content) => {
   const newComment = {
-    id: `comment-${Date.now()}`,
+    post_id: postId,
     username,
-    content: content.trim(),
-    createdAt: new Date().toISOString()
+    content: content.trim()
   };
   
-  post.comments.push(newComment);
-  posts[postIndex] = post;
-  saveStorageData('bn_posts', posts, 'POSTS_UPDATE');
-  
-  if (post.username !== username) {
-    addNotification(post.username, `${username} comentou algo irrelevante no seu post.`, 'comment');
+  const { data: comment, error } = await supabase
+    .from('post_comments')
+    .insert([newComment])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao adicionar comentário:', error);
+    return null;
   }
   
-  return post;
+  const { data: post } = await supabase
+    .from('posts')
+    .select('username')
+    .eq('id', postId)
+    .single();
+
+  if (post && post.username !== username) {
+    await addNotification(post.username, `${username} comentou algo irrelevante no seu post.`, 'comment');
+  }
+  
+  return {
+    id: comment.id,
+    username: comment.username,
+    content: comment.content,
+    createdAt: comment.created_at
+  };
 };
 
 // Adiciona notificação
-export const addNotification = (targetUsername, content, type = 'system') => {
-  const { notifications } = getStorageData();
-  
+export const addNotification = async (targetUsername, content, type = 'system') => {
   const newNotification = {
-    id: `n-${Date.now()}`,
     username: targetUsername,
     type,
     content,
-    createdAt: new Date().toISOString(),
     read: false
   };
   
-  notifications.unshift(newNotification);
-  saveStorageData('bn_notifications', notifications, 'NOTIFICATIONS_UPDATE');
+  const { data: notif, error } = await supabase
+    .from('notifications')
+    .insert([newNotification])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao adicionar notificação:', error);
+    return null;
+  }
   
-  // Dispara evento personalizado no DOM para tocar alertas ou exibir toasts em tempo real na aba ativa
   if (typeof window !== 'undefined') {
-    const event = new CustomEvent('bn_toast_alert', { detail: newNotification });
+    const event = new CustomEvent('bn_toast_alert', { detail: {
+      id: notif.id,
+      username: notif.username,
+      type: notif.type,
+      content: notif.content,
+      createdAt: notif.created_at,
+      read: notif.read
+    } });
     window.dispatchEvent(event);
+  }
+
+  return notif;
+};
+
+// Busca notificações do usuário
+export const fetchNotifications = async (username) => {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .eq('username', username)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Erro ao buscar notificações:', error);
+    return [];
+  }
+
+  return data.map(n => ({
+    id: n.id,
+    username: n.username,
+    type: n.type,
+    content: n.content,
+    createdAt: n.created_at,
+    read: n.read
+  }));
+};
+
+// Marca todas as notificações como lidas
+export const markAllNotificationsRead = async (username) => {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('username', username);
+
+  if (error) {
+    console.error('Erro ao marcar notificações como lidas:', error);
   }
 };
 
-// Dispara uma notificação aleatória no feed de alguém para tédio geral
-const triggerRandomSystemNotification = (senderUsername, action) => {
-  const { users } = getStorageData();
-  const potentialTargets = users.filter(u => u.username !== senderUsername && !DEFAULT_USERS.some(b => b.username === u.username));
+// Limpa notificações do usuário
+export const clearAllNotifications = async (username) => {
+  const { error } = await supabase
+    .from('notifications')
+    .delete()
+    .eq('username', username);
+
+  if (error) {
+    console.error('Erro ao limpar notificações:', error);
+  }
+};
+
+// Marca uma notificação específica como lida
+export const markNotificationRead = async (id) => {
+  const { error } = await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Erro ao marcar notificação como lida:', error);
+  }
+};
+
+// Dispara uma notificação aleatória no feed de alguém
+const triggerRandomSystemNotification = async (senderUsername) => {
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('username');
+
+  if (error || !users) return;
+  
+  const potentialTargets = users
+    .filter(u => u.username !== senderUsername && !BOTS.includes(u.username))
+    .map(u => u.username);
   
   if (potentialTargets.length === 0) return;
   
-  // Escolhe uma pessoa aleatória para mandar uma notificação chata
   const target = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
   
   const notificationsOfTension = [
@@ -299,124 +371,199 @@ const triggerRandomSystemNotification = (senderUsername, action) => {
   ];
   
   const content = notificationsOfTension[Math.floor(Math.random() * notificationsOfTension.length)];
-  addNotification(target.username, content, 'system');
+  await addNotification(target, content, 'system');
 };
 
 // Atualiza perfil de usuário
-export const updateUserProfile = (username, updatedData) => {
-  const { users, posts } = getStorageData();
-  const userIndex = users.findIndex(u => u.username === username);
-  
-  if (userIndex === -1) return null;
-  
-  users[userIndex] = {
-    ...users[userIndex],
-    ...updatedData
-  };
-  
-  saveStorageData('bn_users', users, 'USERS_UPDATE');
-  return users[userIndex];
+export const updateUserProfile = async (username, updatedData) => {
+  const dbData = {};
+  if (updatedData.name !== undefined) dbData.name = updatedData.name;
+  if (updatedData.bio !== undefined) dbData.bio = updatedData.bio;
+  if (updatedData.boredomLevel !== undefined) dbData.boredom_level = parseInt(updatedData.boredomLevel);
+  if (updatedData.avatarColor !== undefined) dbData.avatar_color = updatedData.avatarColor;
+
+  const { data: updated, error } = await supabase
+    .from('users')
+    .update(dbData)
+    .eq('username', username)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao atualizar perfil:', error);
+    return null;
+  }
+  return mapUserToUI(updated);
 };
 
 // Envia mensagem direta (Chat)
-export const sendDirectMessage = (fromUser, toUser, text) => {
-  const { chats } = getStorageData();
-  
+export const sendDirectMessage = async (fromUser, toUser, text) => {
   const newMessage = {
-    id: `msg-${Date.now()}`,
     sender: fromUser,
     receiver: toUser,
-    text: text.trim(),
-    createdAt: new Date().toISOString()
+    text: text.trim()
   };
-  
-  chats.push(newMessage);
-  saveStorageData('bn_chats', chats, 'CHATS_UPDATE');
+
+  const { data: msg, error } = await supabase
+    .from('messages')
+    .insert([newMessage])
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Erro ao enviar mensagem:', error);
+    return null;
+  }
   
   // Simula digitação e resposta de Bots
-  const isBot = DEFAULT_USERS.some(u => u.username === toUser);
+  const isBot = BOTS.includes(toUser);
   if (isBot) {
-    // Adiciona notificação de digitação fictícia
-    setTimeout(() => {
+    setTimeout(async () => {
       const responses = BOT_RESPONSES[toUser] || ['Humm... tanto faz.'];
       const randomReply = responses[Math.floor(Math.random() * responses.length)];
       
       const botMessage = {
-        id: `msg-${Date.now() + 1}`,
         sender: toUser,
         receiver: fromUser,
-        text: randomReply,
-        createdAt: new Date().toISOString()
+        text: randomReply
       };
       
-      const currentChats = JSON.parse(localStorage.getItem('bn_chats')) || [];
-      currentChats.push(botMessage);
-      saveStorageData('bn_chats', currentChats, 'CHATS_UPDATE');
+      const { data: botMsg } = await supabase
+        .from('messages')
+        .insert([botMessage])
+        .select()
+        .single();
       
-      // Notifica o usuário que o robô respondeu
-      addNotification(fromUser, `${toUser} te respondeu com total desdém.`, 'chat');
+      if (botMsg) {
+        await addNotification(fromUser, `${toUser} te respondeu com total desdém.`, 'chat');
+      }
       
-    }, 1500 + Math.random() * 1500); // 1.5 a 3 segundos para responder
+    }, 1500 + Math.random() * 1500);
   } else {
-    // Se for usuário real, adiciona notificação
-    addNotification(toUser, `Você recebeu uma mensagem privada insignificante de ${fromUser}.`, 'chat');
+    await addNotification(toUser, `Você recebeu uma mensagem privada insignificante de ${fromUser}.`, 'chat');
   }
   
-  return newMessage;
+  return msg;
 };
 
 // Retorna o histórico de DMs de um usuário com outro
-export const getChatHistory = (userA, userB) => {
-  const { chats } = getStorageData();
-  return chats.filter(
-    m => (m.sender === userA && m.receiver === userB) || (m.sender === userB && m.receiver === userA)
-  ).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+export const getChatHistory = async (userA, userB) => {
+  const { data, error } = await supabase
+    .from('messages')
+    .select('*')
+    .or(`and(sender.eq.${userA},receiver.eq.${userB}),and(sender.eq.${userB},receiver.eq.${userA})`)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Erro ao obter histórico do chat:', error);
+    return [];
+  }
+
+  return data.map(m => ({
+    id: m.id,
+    sender: m.sender,
+    receiver: m.receiver,
+    text: m.text,
+    createdAt: m.created_at
+  }));
 };
 
 // Retorna os contatos com quem o usuário já conversou ou pode conversar
-export const getChatContacts = (currentUsername) => {
-  const { users, chats } = getStorageData();
+export const getChatContacts = async (currentUsername) => {
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('*');
+
+  if (usersError || !users) {
+    console.error('Erro ao buscar usuários:', usersError);
+    return [];
+  }
   
-  // Pega usuários com quem já trocou mensagens
+  const { data: chats, error: chatsError } = await supabase
+    .from('messages')
+    .select('sender, receiver')
+    .or(`sender.eq.${currentUsername},receiver.eq.${currentUsername}`);
+
   const messagePartners = new Set();
-  chats.forEach(m => {
-    if (m.sender === currentUsername) messagePartners.add(m.receiver);
-    if (m.receiver === currentUsername) messagePartners.add(m.sender);
-  });
+  if (chats) {
+    chats.forEach(m => {
+      if (m.sender === currentUsername) messagePartners.add(m.receiver);
+      if (m.receiver === currentUsername) messagePartners.add(m.sender);
+    });
+  }
   
-  // Todos os usuários (para que possa iniciar conversas)
   return users
     .filter(u => u.username !== currentUsername)
     .map(u => ({
-      ...u,
+      username: u.username,
+      name: u.name,
+      bio: u.bio,
+      boredomLevel: u.boredom_level,
+      avatarColor: u.avatar_color,
       hasInteracted: messagePartners.has(u.username)
     }))
     .sort((a, b) => (b.hasInteracted ? 1 : 0) - (a.hasInteracted ? 1 : 0));
 };
 
-// Escuta por mudanças sincronizadas de outras abas
+// Escuta por mudanças sincronizadas em tempo real via Supabase Realtime
 export const subscribeToSync = (callback) => {
-  if (typeof window === 'undefined' || !syncChannel) return () => {};
-  
-  const handler = (event) => {
-    callback(event.detail || event.data);
-  };
-  
-  // Escuta o canal BroadcastChannel
-  syncChannel.addEventListener('message', handler);
-  
-  // Escuta também mudanças locais na mesma aba para disparos manuais
-  window.addEventListener('bn_local_sync', handler);
-  
-  return () => {
-    syncChannel.removeEventListener('message', handler);
-    window.removeEventListener('bn_local_sync', handler);
-  };
-};
+  // Sincroniza Posts
+  const postsChannel = supabase
+    .channel('public:posts')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, async () => {
+      const posts = await fetchPosts();
+      callback({ key: 'bn_posts', data: posts });
+    })
+    .subscribe();
 
-// Dispara uma sincronização local (para a mesma aba escutar atualizações)
-export const triggerLocalSync = (type, key, data) => {
-  if (typeof window === 'undefined') return;
-  const event = new CustomEvent('bn_local_sync', { detail: { type, key, data } });
-  window.dispatchEvent(event);
+  // Sincroniza Likes
+  const likesChannel = supabase
+    .channel('public:post_likes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, async () => {
+      const posts = await fetchPosts();
+      callback({ key: 'bn_posts', data: posts });
+    })
+    .subscribe();
+
+  // Sincroniza Comentários
+  const commentsChannel = supabase
+    .channel('public:post_comments')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'post_comments' }, async () => {
+      const posts = await fetchPosts();
+      callback({ key: 'bn_posts', data: posts });
+    })
+    .subscribe();
+
+  // Sincroniza Mensagens de Chat
+  const messagesChannel = supabase
+    .channel('public:messages')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+      callback({ key: 'bn_chats' });
+    })
+    .subscribe();
+
+  // Sincroniza Notificações
+  const notificationsChannel = supabase
+    .channel('public:notifications')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => {
+      callback({ key: 'bn_notifications' });
+    })
+    .subscribe();
+
+  // Sincroniza Perfis de Usuários
+  const usersChannel = supabase
+    .channel('public:users')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => {
+      callback({ key: 'bn_users' });
+    })
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(postsChannel);
+    supabase.removeChannel(likesChannel);
+    supabase.removeChannel(commentsChannel);
+    supabase.removeChannel(messagesChannel);
+    supabase.removeChannel(notificationsChannel);
+    supabase.removeChannel(usersChannel);
+  };
 };

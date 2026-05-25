@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Heart, MessageSquare, Image, Loader } from 'lucide-react';
-import { createPost, toggleLike, addComment } from '../db/mockStore';
+import { createPost, toggleLike, addComment, fetchPosts } from '../db/mockStore';
 
 // Imagens intencionalmente monótonas
 const BORING_IMAGES = [
@@ -18,14 +18,14 @@ export default function Feed({ posts, setPosts, currentUser }) {
   const [commentInputs, setCommentInputs] = useState({});
   const [isBoringImageLoading, setIsBoringImageLoading] = useState(false);
 
-  const handleCreatePost = (e) => {
+  const handleCreatePost = async (e) => {
     e.preventDefault();
     if (!postContent.trim() && !imageUrl) return;
 
-    createPost(currentUser.username, postContent, imageUrl);
+    await createPost(currentUser.username, postContent, imageUrl);
     
-    // Atualiza estado local recarregando do banco de dados simulado
-    const updatedPosts = JSON.parse(localStorage.getItem('bn_posts')) || [];
+    // Atualiza estado local recarregando do Supabase
+    const updatedPosts = await fetchPosts();
     setPosts(updatedPosts);
 
     // Reseta inputs
@@ -42,21 +42,21 @@ export default function Feed({ posts, setPosts, currentUser }) {
     }, 600);
   };
 
-  const handleLike = (postId) => {
-    toggleLike(postId, currentUser.username);
-    const updatedPosts = JSON.parse(localStorage.getItem('bn_posts')) || [];
+  const handleLike = async (postId) => {
+    await toggleLike(postId, currentUser.username);
+    const updatedPosts = await fetchPosts();
     setPosts(updatedPosts);
   };
 
-  const handleAddComment = (e, postId) => {
+  const handleAddComment = async (e, postId) => {
     e.preventDefault();
     const commentText = commentInputs[postId];
     if (!commentText || !commentText.trim()) return;
 
-    addComment(postId, currentUser.username, commentText);
+    await addComment(postId, currentUser.username, commentText);
 
     // Atualiza posts
-    const updatedPosts = JSON.parse(localStorage.getItem('bn_posts')) || [];
+    const updatedPosts = await fetchPosts();
     setPosts(updatedPosts);
 
     // Limpa input
