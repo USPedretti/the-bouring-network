@@ -380,6 +380,22 @@ const triggerRandomSystemNotification = async (senderUsername) => {
   await addNotification(target, content, 'system');
 };
 
+// Verifica se um nome de usuário está disponível
+export const checkUsernameAvailability = async (newUsername) => {
+  const { data, error } = await supabase
+    .from('users')
+    .select('username')
+    .ilike('username', newUsername.trim())
+    .maybeSingle();
+
+  if (error) {
+    console.error('Erro ao verificar disponibilidade de username:', error);
+    return false;
+  }
+
+  return data === null;
+};
+
 // Atualiza perfil de usuário
 export const updateUserProfile = async (username, updatedData) => {
   const dbData = {};
@@ -387,6 +403,9 @@ export const updateUserProfile = async (username, updatedData) => {
   if (updatedData.bio !== undefined) dbData.bio = updatedData.bio;
   if (updatedData.boredomLevel !== undefined) dbData.boredom_level = parseInt(updatedData.boredomLevel);
   if (updatedData.avatarColor !== undefined) dbData.avatar_color = updatedData.avatarColor;
+  if (updatedData.newUsername !== undefined && updatedData.newUsername.trim().toLowerCase() !== username.toLowerCase()) {
+    dbData.username = updatedData.newUsername.trim();
+  }
 
   const { data: updated, error } = await supabase
     .from('users')

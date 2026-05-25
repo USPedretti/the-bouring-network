@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, ShieldAlert } from 'lucide-react';
-import { updateUserProfile } from '../db/mockStore';
+import { updateUserProfile, checkUsernameAvailability } from '../db/mockStore';
 
 const COLOR_SHADES = [
   { value: '#ffffff', label: 'Branco Clínico' },
@@ -12,17 +12,48 @@ const COLOR_SHADES = [
 
 export default function Profile({ currentUser, setCurrentUser }) {
   const [name, setName] = useState(currentUser.name || '');
+  const [username, setUsername] = useState(currentUser.username || '');
   const [bio, setBio] = useState(currentUser.bio || '');
   const [boredomLevel, setBoredomLevel] = useState(currentUser.boredomLevel || 5);
   const [avatarColor, setAvatarColor] = useState(currentUser.avatarColor || '#e8e6df');
   const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
   const handleSave = async (e) => {
     e.preventDefault();
     setMessage('');
+    setError('');
+
+    const cleanUsername = username.trim();
+    if (!cleanUsername) {
+      setError('O nome de usuário (@) não pode ficar vazio.');
+      return;
+    }
+
+    // Validação de formato do username (letras, números e sublinhados)
+    const usernameRegex = /^[a-zA-Z0-9_]+$/;
+    if (!usernameRegex.test(cleanUsername)) {
+      setError('O nome de usuário (@) deve conter apenas letras, números e sublinhados (_). Sem espaços ou caracteres especiais.');
+      return;
+    }
+
+    if (cleanUsername.length < 3) {
+      setError('O nome de usuário (@) deve ter pelo menos 3 caracteres.');
+      return;
+    }
+
+    // Se o username mudou, verifica disponibilidade
+    if (cleanUsername.toLowerCase() !== currentUser.username.toLowerCase()) {
+      const isAvailable = await checkUsernameAvailability(cleanUsername);
+      if (!isAvailable) {
+        setError('Este nome de usuário (@) incrivelmente genérico já está em uso.');
+        return;
+      }
+    }
 
     const updated = await updateUserProfile(currentUser.username, {
       name,
+      newUsername: cleanUsername,
       bio,
       boredomLevel: parseInt(boredomLevel),
       avatarColor
@@ -32,6 +63,8 @@ export default function Profile({ currentUser, setCurrentUser }) {
       setCurrentUser(updated);
       setMessage('Alterações salvas com absoluto desinteresse.');
       setTimeout(() => setMessage(''), 3000);
+    } else {
+      setError('Ocorreu um erro ao salvar o perfil no Supabase.');
     }
   };
 
@@ -50,6 +83,12 @@ export default function Profile({ currentUser, setCurrentUser }) {
           Personalize sua identidade digital sem nenhuma urgência ou propósito real.
         </p>
       </div>
+
+      {error && (
+        <div style={{ border: '2px solid var(--accent-color)', padding: '0.75rem', marginBottom: '1.5rem', fontSize: '0.85rem', backgroundColor: 'var(--accent-muted)', color: 'var(--accent-color)' }}>
+          <strong>Erro:</strong> {error}
+        </div>
+      )}
 
       {message && (
         <div style={{ border: '2px solid var(--border-color)', padding: '0.75rem', marginBottom: '1.5rem', fontSize: '0.85rem', backgroundColor: 'var(--gray-light)' }}>
@@ -72,6 +111,18 @@ export default function Profile({ currentUser, setCurrentUser }) {
       </div>
 
       <form onSubmit={handleSave} className="post-composer" style={{ border: '2px solid var(--border-color)' }}>
+        <div className="form-group">
+          <label className="form-label" htmlFor="username">Nome de Usuário (@)</label>
+          <input
+            type="text"
+            id="username"
+            className="form-input"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </div>
+
         <div className="form-group">
           <label className="form-label" htmlFor="displayName">Nome de Exibição</label>
           <input
